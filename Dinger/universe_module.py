@@ -157,7 +157,7 @@ class Universe(Universe):
         portfoilo = {}
 
         for ticker in tickers:
-            ohlcv = stock.get_market_ohlcv(start, end, ticker, 'd')
+            ohlcv = stock.get_market_ohlcv(start, end, ticker, 'd').pct_change()
             portfoilo[ticker] = np.array(ohlcv.iloc[-1])
 
         return portfoilo
