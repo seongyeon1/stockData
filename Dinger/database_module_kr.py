@@ -142,7 +142,7 @@ class stockKR(StockDatabase):
 
         data[['ROA', 'ROE', '베타']] = data[['ROA', 'ROE', '베타']].astype('float')
 
-        data.to_csv('./DF/stock_kr.csv', index=False)
+        #data.to_csv('./DF/kospi_kosdaq_fundamental_df.csv', index=False)
         return data, err
 
     # ---------------------------------------------------------------------------------------------------------#

@@ -27,14 +27,6 @@ class Universe(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def top_n_stocks(self):
-        """
-        데이터 베이스에서 가져온 종목들의 점수를 계산
-        data = {fdsfsf}
-        """
-        pass
-
-    @abstractmethod
     def get_universe(self) :
     
         """

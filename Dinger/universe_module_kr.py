@@ -1,9 +1,6 @@
 import pandas as pd
-import warnings
 from datetime import datetime, timedelta
 
-from lib2to3.refactor import get_all_fix_names
-from webbrowser import get
 from Dinger.universe_abstract import Universe
 
 '''
@@ -13,43 +10,68 @@ df.columns = ['SEC_NM_KOR', 'MKT_VAL', 'ALL_MKT_VAL', 'PER',
 
 class StockUniverse_KR(Universe):
     
-    def __init__(self, data: pd.DataFrame, universe=None, my_portfolio=None):
+    def __init__(self, data: pd.DataFrame, scaling = None, universe=None, my_portfolio=None):
         self.data = data
         self.data.dropna(inplace=True)
         self.data.종목코드 = self.data.종목코드.astype(str).str.zfill(6).tolist()
         self.universe = universe
         self.my_portfolio = my_portfolio
+        self.scaling = scaling
 
-    def get_standard_df(self, mode='mean', scaling=False):
+    def get_standard_df(self, mode='mean'):
         """
         mode = 'mean', 'logistic'
         database module output df
         mode  : 어떤  기준 ex. mean, median으로 할지
         """
-        # if sector = 'sec':
-        #     sec = self.data.groupby('SEC_NM_KOR')
+
         if '종목코드' in self.data.columns:
             self.data.set_index('종목코드', inplace=True)
     
         if mode == 'mean':
             return self.data.groupby('SEC_NM_KOR').mean()
 
-        if mode == 'quant':
+        if mode == 'quantile':
             return self.data.groupby('SEC_NM_KOR').quantile()
 
         if mode == 'median':
             return self.data.groupby('SEC_NM_KOR').median()
 
-        # if mode == 'std':
-        #     return self.get_score(mode='std').describe().T
-        #return df
-
-    def get_score(self, mode='mean'):
+    def get_score(self, mode='mean', scaling=None):
         """
-        mode = 'mean','quant','median','mm','std'
+        mode = 'mean','quant','median'
         """
         if '종목코드' in self.data.columns:
             self.data.set_index('종목코드', inplace=True)
+
+        ### Scaling
+        tmp = self.data.drop(['CMP_KOR', 'SEC_NM_KOR'], axis=1)
+
+        if scaling == 'mm':
+            from sklearn.preprocessing import MinMaxScaler
+            scaler = MinMaxScaler()
+            scaled_data = scaler.fit_transform(tmp)
+            scaled_data = pd.DataFrame(scaled_data, columns=tmp.columns).set_index(tmp.index)
+            scaled_data[['PER', 'PBR', '베타']] = scaled_data[['PER', 'PBR', '베타']] * (-1)
+            score = scaled_data.sum(axis=1).to_dict()
+
+            for i in self.data.index:
+                self.data.loc[i, 'Score'] = score[i]
+
+            return self.data
+
+        if scaling == 'std':
+            from sklearn.preprocessing import StandardScaler
+            scaler = StandardScaler()
+            scaled_data = scaler.fit_transform(tmp)
+            scaled_data = pd.DataFrame(scaled_data, columns=tmp.columns).set_index(tmp.index)
+            scaled_data[['PER', 'PBR', '베타']] = scaled_data[['PER', 'PBR', '베타']] * (-1)
+            score = scaled_data.sum(axis=1).to_dict()
+
+            for i in self.data.index:
+                self.data.loc[i, 'Score'] = score[i]
+
+            return self.data
 
         sector_list = self.data.SEC_NM_KOR.unique().tolist()
         if (mode == 'mean') or (mode == 'quant') or (mode == 'median'):
@@ -67,7 +89,7 @@ class StockUniverse_KR(Universe):
                 for i in tmp.index.tolist():
                     score[i] = 0
                     for col in tmp.columns:
-                        if col in ['ROA', 'ROE', '베타']:
+                        if col in ['PER', 'PBR', '베타']:
                             score[i] += (tmp.loc[i][col] < sec_standard.loc[sec, col])
                         else:
                             score[i] += (tmp.loc[i][col] > sec_standard.loc[sec, col])
@@ -76,33 +98,9 @@ class StockUniverse_KR(Universe):
                 self.data.loc[i, 'Score'] = score[i]
             return self.data
 
-        tmp = self.data.drop(['CMP_KOR', 'SEC_NM_KOR'], axis=1)
 
-        if mode == 'mm':
-            from sklearn.preprocessing import MinMaxScaler
-            scaler = MinMaxScaler()
-            scaled_data = scaler.fit_transform(tmp)
-            scaled_data = pd.DataFrame(scaled_data, columns=tmp.columns).set_index(tmp.index)
-            score = scaled_data.sum(axis=1).to_dict()
 
-            for i in self.data.index:
-                self.data.loc[i, 'Score'] = score[i]
-
-            return self.data
-
-        if mode == 'std':
-            from sklearn.preprocessing import StandardScaler
-            scaler = StandardScaler()
-            scaled_data = scaler.fit_transform(tmp)
-            scaled_data = pd.DataFrame(scaled_data, columns=tmp.columns).set_index(tmp.index)
-            score = scaled_data.sum(axis=1).to_dict()
-
-            for i in self.data.index:
-                self.data.loc[i, 'Score'] = score[i]
-
-            return self.data
-
-    def top_n_sectors(self, n=5, mode='mean'):
+    def top_n_sectors(self, n=5, mode='mean', scaling=None):
         """
         데이터 베이스에서 가져온 종목들의 점수를 계산
         """
@@ -110,15 +108,7 @@ class StockUniverse_KR(Universe):
         return score.iloc[:n]
 
 
-    def top_n_stocks(self, n=5, mode='mean'):
-        """
-        데이터 베이스에서 가져온 종목들의 점수를 계산
-        """
-        score = self.get_score(mode=mode).sort_values('Score', ascending=False)
-        return score.iloc[:n]
-
-
-    def get_universe(self, n=5, mode='mean', sector=None):
+    def get_universe(self, n=5, mode='mean', sector=None, scaling=None):
         """
         input sector 에 따라 top n stocks 가져오기
         예를 들어 it만 입력할 수 있고 , 3개 넣을 수도 있음. list로 입력
@@ -217,6 +207,7 @@ class StockUniverse_KR(Universe):
         for k in resnet_dict:
             universe.loc[k, 'resnet'] = resnet_dict[k]
 
+        universe['Score'] += universe.resnet
         self.universe = universe
         return universe
 
